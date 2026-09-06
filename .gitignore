@@ -1,1 +1,18 @@
+# 密钥（切勿提交）
 .env
+*.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+
+# 工具目录
+.codebuddy/

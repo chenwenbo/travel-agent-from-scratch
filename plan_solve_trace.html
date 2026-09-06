@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 旅行助手 · Plan-Solve 两阶段复盘</title>
+<style>
+:root {
+  --bg: #f4f6fb;
+  --card: #ffffff;
+  --line: #e3e8f0;
+  --ink: #1c2434;
+  --muted: #68718a;
+  --amber: #b45309; --amber-bg: #fef3c7;
+  --teal: #0f766e; --teal-bg: #ccfbf1;
+  --violet: #6d28d9; --violet-bg: #ede9fe;
+  --blue: #1d4ed8; --blue-bg: #dbeafe;
+  --red: #b91c1c; --red-bg: #fee2e2;
+  --green: #15803d; --green-bg: #dcfce7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.7 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 28px 18px 80px; }
+.hero { background: linear-gradient(135deg, #1e2b4a 0%, #24356b 100%); color: #fff;
+  border-radius: 16px; padding: 26px 30px; }
+.hero h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: .5px; }
+.hero .sub { font-size: 13px; color: #aeb9d6; }
+.hero .query { font-size: 18px; margin: 10px 0 14px; color: #ffe9a8; font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25);
+  padding: 3px 12px; border-radius: 999px; font-size: 12px; }
+.chip.ok { background: rgba(74,222,128,.2); border-color: rgba(74,222,128,.5); }
+.chip.warn { background: rgba(251,191,36,.18); border-color: rgba(251,191,36,.5); }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 4px; }
+.toc a { text-decoration: none; font-size: 12px; padding: 4px 12px; border-radius: 999px;
+  background: var(--card); border: 1px solid var(--line); color: var(--muted); }
+.toc a:hover { border-color: var(--blue); color: var(--blue); }
+.hint { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  margin: 18px 0; overflow: hidden; transition: box-shadow .15s ease, border-color .15s ease; }
+.card:hover { box-shadow: 0 4px 18px rgba(29,78,216,.08); border-color: #c9d4ea; }
+.card.phase1 { border-left: 5px solid var(--violet); }
+.card.solve { border-left: 5px solid var(--blue); }
+.round-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+  background: #f9fafc; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.round-num { background: var(--blue); color: #fff; font-weight: 700; font-size: 13px;
+  padding: 4px 12px; border-radius: 8px; letter-spacing: 1px; }
+.round-num.p1 { background: var(--violet); }
+.round-num.fin { background: var(--green); }
+.round-meta { color: var(--muted); font-size: 12.5px; flex: 1; min-width: 200px; }
+.section { padding: 6px 20px 18px; }
+h3.step { font-size: 14px; margin: 18px 0 10px; padding-top: 14px; border-top: 1px dashed var(--line);
+  color: #334155; display: flex; align-items: center; gap: 8px; }
+h3.step::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
+h3.step.plan::before { background: var(--violet); }
+h3.step.tool::before { background: var(--amber); }
+h3.step.out::before { background: var(--violet); }
+h3.step.obs::before { background: var(--teal); }
+.badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px;
+  border-radius: 6px; letter-spacing: .5px; white-space: nowrap; }
+.b-system { background: var(--amber-bg); color: var(--amber); }
+.b-user { background: var(--teal-bg); color: var(--teal); }
+.b-assistant { background: var(--violet-bg); color: var(--violet); }
+.b-obs { background: var(--blue-bg); color: var(--blue); }
+.b-tool { background: var(--red-bg); color: var(--red); }
+.b-fin { background: var(--green-bg); color: var(--green); }
+pre { margin: 0; padding: 12px 14px; background: #0f172a; color: #dbe4f0;
+  border-radius: 10px; overflow-x: auto; font: 12.5px/1.65 "SF Mono", Menlo, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word; }
+pre.plain { background: #f8fafc; color: #1e293b; border: 1px solid var(--line); }
+.msg { border: 1px solid var(--line); border-radius: 10px; margin: 8px 0; overflow: hidden; }
+.msg-head { display: flex; align-items: center; gap: 10px; padding: 7px 12px; cursor: pointer;
+  background: #fbfcfe; user-select: none; }
+.msg-title { color: var(--muted); font-size: 12.5px; flex: 1; }
+.caret { font-size: 11px; color: #94a3b8; }
+.msg pre { border-radius: 0; border-top: 1px solid var(--line); }
+.msg.system:not(.open) pre { display: none; }
+.msg:not(.system) pre { display: block; }
+.parsed-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 720px) { .parsed-grid { grid-template-columns: 1fr; } }
+.pbox { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: #f8fafc; }
+.pbox .label { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; }
+.action-line { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px; }
+.step-list { margin: 6px 0 0; padding: 0; list-style: none; }
+.step-list li { display: flex; gap: 10px; padding: 9px 12px; margin: 6px 0;
+  background: #f8fafc; border: 1px solid var(--line); border-radius: 10px; align-items: flex-start; }
+.step-num { flex: 0 0 auto; min-width: 26px; text-align: center; font-weight: 700; font-size: 12px;
+  color: var(--violet); background: var(--violet-bg); border-radius: 8px; padding: 2px 6px; }
+.step-txt { flex: 1; color: var(--ink); }
+.kv { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 12.5px; }
+.kv b { color: var(--ink); font-weight: 600; }
+.final-card { background: linear-gradient(135deg, #0b3d2e, #14532d); color: #ecfdf5;
+  border-radius: 14px; padding: 22px 26px; margin-top: 24px; }
+.final-card h2 { margin: 0 0 10px; font-size: 16px; color: #a7f3d0; }
+.final-card pre { background: transparent; color: #f0fdf4; padding: 0; font: inherit;
+  white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 26px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <h1>AI 旅行助手 · Plan-Solve 两阶段处理过程复盘</h1>
+    <div class="sub">范式：Plan（先规划）→ Solve（逐步执行工具收集信息）→ 最终答复</div>
+    <div class="query">用户提问：我想去北京玩</div>
+    <div class="chips">
+      <span class="chip">模型：deepseek-chat</span>
+      <span class="chip">时间：2026-09-06T10:55:18</span>
+      <span class="chip">Paradigm：plan_solve</span>
+      <span class="chip">Phase 1：计划生成 ×1</span>
+      <span class="chip">Phase 2：3 轮执行</span>
+      <span class="chip ok">Phase 2 · Finish 正常收敛</span>
+      <span class="chip">结构化过程：plan_solve_trace.json</span>
+    </div>
+  </header>
+  <nav class="toc"><a href="#phase1">Phase 1 · 计划</a><a href="#round-1">Round 1</a><a href="#round-2">Round 2</a><a href="#round-3">Round 3</a><a href="#final">最终答复</a></nav>
+  <div class="hint">
+    时间线分两阶段：<b>Phase 1 · Plan</b>：模型只输出编号执行计划（无工具调用）；
+    <b>Phase 2 · Solve</b>：把计划注入 System Prompt 后逐轮执行——每轮展示 ① 完整输入 Prompt → ② 模型输出 → ③ 解析结果 → ④ 工具 Observation 回喂 / Finish。
+    灰色 SYSTEM 历史消息默认折叠，点标题即可展开。
+  </div>
+  
+<article class="card phase1" id="phase1">
+  <header class="round-head">
+    <span class="round-num p1">PHASE 1 · PLAN</span>
+    <span class="round-meta">1 次模型调用 · 只生成计划，不调用工具 → 计划步骤注入 Phase 2</span>
+  </header>
+  <section class="section">
+    <h3 class="step plan">① 本轮模型输入 —— 发送给 DeepSeek 的完整 Prompt</h3>
+    <div class="msg system "><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-system">SYSTEM</span><span class="msg-title">SYSTEM · 规划 System Prompt（角色 + 工具清单 + “只规划、禁止调用工具”约束）（1/2）</span><span class="caret">点击展开 / 收起</span></div><pre>你是一个「旅行小助手」智能体。回答用户的旅行需求前，你要先制定一份清晰的执行计划。
+
+任务：请仔细阅读用户问题，规划出「先查什么、再查什么、最后怎么汇总答复」的步骤序列。
+
+
+可用工具清单：
+1. get_weather[城市名]
+   作用：查询该城市当前天气（温度/体感/湿度/风速/天气现象）。
+   示例：get_weather[北京]
+2. get_attraction[城市名, 天气摘要]
+   作用：根据城市和当天天气，检索该城市适合游玩的景点/攻略。
+   示例：get_attraction[北京, 晴 26°C 微风]
+
+
+输出格式（必须严格遵守）：只输出一行「计划：」标题，后面每一行是一条编号步骤，例如：
+
+计划：
+1. 调用 get_weather 查询目标城市的当前天气
+2. 把天气摘要作为参数，调用 get_attraction 检索适合当天游玩的景点/攻略
+3. 综合天气与景点检索结果，用中文给出完整的旅行建议（Finish）
+
+规则：
+- 每一步用一行中文描述，可注明要用的工具（get_weather / get_attraction），最后一步注明 Finish 即可。
+- 本阶段只做规划：禁止真正执行或书写 Action: 调用、禁止输出 Thought:，也禁止使用 Finish[方括号] 形式。
+- 计划要具体、可直接执行，步骤数建议 2~5 条。
+- 全程使用中文。</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-user">USER</span><span class="msg-title">USER · 用户提问（2/2）</span><span class="caret">点击展开 / 收起</span></div><pre>我想去北京玩</pre></div>
+    <h3 class="step out">② 模型输出 —— 计划原文（Response）</h3>
+    <pre>计划：
+1. 调用 get_weather 查询北京的当前天气（温度/体感/湿度/风速/天气现象）
+2. 把天气摘要作为参数，调用 get_attraction 检索北京适合当天游玩的景点/攻略
+3. 综合天气与景点检索结果，用中文给出完整的旅行建议（Finish）</pre>
+    <h3 class="step tool">③ 正则解析出的计划步骤</h3>
+    <ul class="step-list"><li><span class="step-num">1</span><span class="step-txt">调用 get_weather 查询北京的当前天气（温度/体感/湿度/风速/天气现象）</span></li><li><span class="step-num">2</span><span class="step-txt">把天气摘要作为参数，调用 get_attraction 检索北京适合当天游玩的景点/攻略</span></li><li><span class="step-num">3</span><span class="step-txt">综合天气与景点检索结果，用中文给出完整的旅行建议（Finish）</span></li></ul>
+  </section>
+</article>
+
+  <div class="section" style="margin:26px 0 0"><span class="badge b-tool">PHASE 2 · SOLVE</span>
+    <span style="color:var(--muted);font-size:12.5px;margin-left:8px">逐轮执行计划（上限 5 轮）</span></div>
+  
+<article class="card solve" id="round-1">
+  <header class="round-head">
+    <span class="round-num ">ROUND 1 / 3</span>
+    <span class="round-meta">执行计划步骤 · 输入 2 条消息 → 调用 DeepSeek → 工具执行后进入下一轮</span>
+  </header>
+  <section class="section">
+    <h3 class="step">① 本轮模型输入 —— 发送给 DeepSeek 的完整 messages（Prompt）</h3>
+    <div class="msg system "><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-system">SYSTEM</span><span class="msg-title">SYSTEM · 执行 System Prompt（注入 Phase 1 计划 + Thought/Action/Finish 约束）（1/2）</span><span class="caret">点击展开 / 收起</span></div><pre>你是一个「旅行小助手」智能体。以下是针对本次用户问题制定的执行计划，请逐步执行该计划，通过多轮调用工具收集信息，直到计划中的信息收集完毕，再给出最终中文旅行建议。
+
+本次执行计划：
+计划：
+1. 调用 get_weather 查询北京的当前天气（温度/体感/湿度/风速/天气现象）
+2. 把天气摘要作为参数，调用 get_attraction 检索北京适合当天游玩的景点/攻略
+3. 综合天气与景点检索结果，用中文给出完整的旅行建议（Finish）
+
+
+可用工具清单：
+1. get_weather[城市名]
+   作用：查询该城市当前天气（温度/体感/湿度/风速/天气现象）。
+   示例：get_weather[北京]
+2. get_attraction[城市名, 天气摘要]
+   作用：根据城市和当天天气，检索该城市适合游玩的景点/攻略。
+   示例：get_attraction[北京, 晴 26°C 微风]
+
+
+执行阶段的回复格式（先 Thought 后 Action，Action 只能出现一行）：
+Thought: 用中文简短说明你在想什么、这一步计划要做什么、为什么调用该工具。
+Action: get_weather[北京]
+
+如果信息已经足够、可以给最终答复，就不再写 Action，直接输出：
+Thought: 北京今天有轻度霾、气温 26°C，检索结果里故宫和室内场馆都很合适……
+Finish[今天北京是霾天、26°C 较热，建议优先安排室内与博物馆类行程：上午参观故宫博物院（提前预约、以室内展馆为主），中午在王府井用午餐，下午去中国国家博物馆避暑避霾；户外如颐和园等可放到傍晚风起之后。穿衣以轻薄夏装为主，建议佩戴口罩、随身带水。]
+
+规则：
+- 必须按上面给出的执行计划逐步推进；计划里没有的信息不要自己脑补，先调用工具确认。
+- Action 中的工具名和参数必须与清单一致，参数写在半角方括号内；get_attraction 有两个参数，用英文逗号分隔。
+- 每次只调用一个工具，等待 Observation 返回后再决定下一轮动作。
+- Finish 不是工具：它用于给出最终答复，前面绝不能写 “Action:”，一行里也不能既有 Action 又有 Finish。
+- Finish 的方括号里必须写出真正完整可用的中文旅行回答（结合刚查到的实际天气和景点信息），不要写格式提示或占位文字。
+- 如果 Observation 以「工具错误」开头，说明刚才的调用失败了：不要慌，换一种表达（如英文城市名、更常见的说法）重试一次；若仍失败再如实告知用户。
+- 推荐先 get_weather 拿到天气，再 get_attraction 按天气推荐景点，最后综合成完整建议。
+- 全程使用中文回复用户。</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-user">USER</span><span class="msg-title">USER · 用户提问（2/2）</span><span class="caret">点击展开 / 收起</span></div><pre>我想去北京玩</pre></div>
+    <h3 class="step out">② 模型输出 —— Response 原文（可见其「思考过程」）</h3>
+    <pre>Thought: 用户想去北京玩，我需要先查询北京的当前天气，以便后续推荐合适的景点。  
+Action: get_weather[北京]</pre>
+    <h3 class="step tool">③ 主循环解析结果</h3>
+    <div class="parsed-grid"><div class="pbox"><div class="label">THOUGHT · 模型本轮推理</div><pre class="plain">用户想去北京玩，我需要先查询北京的当前天气，以便后续推荐合适的景点。</pre></div><div class="pbox"><div class="label">ACTION · 主循环解析</div><span class="badge b-tool">ACTION</span><span class="action-line"> get_weather[北京]</span></div></div>
+    <h3 class="step obs">④ 工具返回 Observation —— 作为下一条消息回喂给模型</h3><pre>[Beijing当前天气] 霾(Smoky haze)；气温 26°C，体感 27°C；湿度 49%；ESE风 4km/h</pre>
+  </section>
+</article>
+
+<article class="card solve" id="round-2">
+  <header class="round-head">
+    <span class="round-num ">ROUND 2 / 3</span>
+    <span class="round-meta">执行计划步骤 · 输入 4 条消息 → 调用 DeepSeek → 工具执行后进入下一轮</span>
+  </header>
+  <section class="section">
+    <h3 class="step">① 本轮模型输入 —— 发送给 DeepSeek 的完整 messages（Prompt）</h3>
+    <div class="msg system "><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-system">SYSTEM</span><span class="msg-title">SYSTEM · 执行 System Prompt（注入 Phase 1 计划 + Thought/Action/Finish 约束）（1/4）</span><span class="caret">点击展开 / 收起</span></div><pre>你是一个「旅行小助手」智能体。以下是针对本次用户问题制定的执行计划，请逐步执行该计划，通过多轮调用工具收集信息，直到计划中的信息收集完毕，再给出最终中文旅行建议。
+
+本次执行计划：
+计划：
+1. 调用 get_weather 查询北京的当前天气（温度/体感/湿度/风速/天气现象）
+2. 把天气摘要作为参数，调用 get_attraction 检索北京适合当天游玩的景点/攻略
+3. 综合天气与景点检索结果，用中文给出完整的旅行建议（Finish）
+
+
+可用工具清单：
+1. get_weather[城市名]
+   作用：查询该城市当前天气（温度/体感/湿度/风速/天气现象）。
+   示例：get_weather[北京]
+2. get_attraction[城市名, 天气摘要]
+   作用：根据城市和当天天气，检索该城市适合游玩的景点/攻略。
+   示例：get_attraction[北京, 晴 26°C 微风]
+
+
+执行阶段的回复格式（先 Thought 后 Action，Action 只能出现一行）：
+Thought: 用中文简短说明你在想什么、这一步计划要做什么、为什么调用该工具。
+Action: get_weather[北京]
+
+如果信息已经足够、可以给最终答复，就不再写 Action，直接输出：
+Thought: 北京今天有轻度霾、气温 26°C，检索结果里故宫和室内场馆都很合适……
+Finish[今天北京是霾天、26°C 较热，建议优先安排室内与博物馆类行程：上午参观故宫博物院（提前预约、以室内展馆为主），中午在王府井用午餐，下午去中国国家博物馆避暑避霾；户外如颐和园等可放到傍晚风起之后。穿衣以轻薄夏装为主，建议佩戴口罩、随身带水。]
+
+规则：
+- 必须按上面给出的执行计划逐步推进；计划里没有的信息不要自己脑补，先调用工具确认。
+- Action 中的工具名和参数必须与清单一致，参数写在半角方括号内；get_attraction 有两个参数，用英文逗号分隔。
+- 每次只调用一个工具，等待 Observation 返回后再决定下一轮动作。
+- Finish 不是工具：它用于给出最终答复，前面绝不能写 “Action:”，一行里也不能既有 Action 又有 Finish。
+- Finish 的方括号里必须写出真正完整可用的中文旅行回答（结合刚查到的实际天气和景点信息），不要写格式提示或占位文字。
+- 如果 Observation 以「工具错误」开头，说明刚才的调用失败了：不要慌，换一种表达（如英文城市名、更常见的说法）重试一次；若仍失败再如实告知用户。
+- 推荐先 get_weather 拿到天气，再 get_attraction 按天气推荐景点，最后综合成完整建议。
+- 全程使用中文回复用户。</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-user">USER</span><span class="msg-title">USER · 用户提问（2/4）</span><span class="caret">点击展开 / 收起</span></div><pre>我想去北京玩</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-assistant">ASSISTANT</span><span class="msg-title">ASSISTANT · 模型历史回复（3/4）</span><span class="caret">点击展开 / 收起</span></div><pre>Thought: 用户想去北京玩，我需要先查询北京的当前天气，以便后续推荐合适的景点。  
+Action: get_weather[北京]</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-obs">USER</span><span class="msg-title">USER · 工具结果回喂（Observation，主循环自动追加）（4/4）</span><span class="caret">点击展开 / 收起</span></div><pre>Observation: [Beijing当前天气] 霾(Smoky haze)；气温 26°C，体感 27°C；湿度 49%；ESE风 4km/h</pre></div>
+    <h3 class="step out">② 模型输出 —— Response 原文（可见其「思考过程」）</h3>
+    <pre>Thought: 已获取北京当前天气为霾天、26°C、湿度适中、微风。接下来需要根据天气摘要调用 get_attraction 检索适合当天游玩的景点。  
+Action: get_attraction[北京, 霾 26°C 微风]</pre>
+    <h3 class="step tool">③ 主循环解析结果</h3>
+    <div class="parsed-grid"><div class="pbox"><div class="label">THOUGHT · 模型本轮推理</div><pre class="plain">已获取北京当前天气为霾天、26°C、湿度适中、微风。接下来需要根据天气摘要调用 get_attraction 检索适合当天游玩的景点。</pre></div><div class="pbox"><div class="label">ACTION · 主循环解析</div><span class="badge b-tool">ACTION</span><span class="action-line"> get_attraction[北京, 霾 26°C 微风]</span></div></div>
+    <h3 class="step obs">④ 工具返回 Observation —— 作为下一条消息回喂给模型</h3><pre>以下是根据「北京 · 霾 26°C 微风」检索到的景点推荐：
+1. 北京旅遊攻略（2026）：熱門景點、美食、住宿、交通及行程推薦
+   链接: https://hk.trip.com/travel-guide/destination/beijing-1
+   简介: 聯絡我們 搜尋訂單 住宿 機票 高鐵／火車票 租車／機場接送 + 租車 + 機場接送 門票／體驗 + 門票／體驗 + eSIM 機票 + 住宿 禮品卡 郵輪 旅遊保險 獨立包團 旅行團 Trip.Planner 旅遊靈感 + 旅遊攻略 + Trip.Best 旅遊地圖 Trip.com 獎賞計劃 優惠 北京 故宮博物院 八達嶺長城 北京環球度假區 中國國家博
+2. 北京自由行攻略－行前準備、旅遊心得、推薦景點、行程安排
+   链接: https://andyventure.com/china-beijing-travel-guide
+   简介: 要注意防曬，大部分景點都沒有遮陰，很容易曬傷。防曬外套、帽子、太陽眼鏡都是必備。 ### 最佳旅遊時間 北京四季分明，其中春季（4～5月）與秋季（9～10月）是最佳旅遊時節。此時氣候宜人、天氣穩定、空氣相對清新，適合戶外活動與拍照。秋季更有楓葉轉紅的美景，推薦前往香山公園或頤和園欣賞秋意。夏季（6～8月）氣溫偏高，部分景點人潮擁擠；冬季（12～2月）則寒冷乾
+3. 2026北京自由行攻略｜北京景點、美食、住宿與行程推薦
+   链接: https://esim.holafly.com/zh/travel-tips/beijing-travel-guide
+   简介: ## 北京自由行注意事項 1. 台胞證必備：台灣人前往北京需持有效的台胞證。出發前確認證件有效期，並攜帶複印件以備不時之需。 2. 通關時避免敏感話題：入境時邊檢可能會詢問旅遊目的，簡單回答「旅遊」即可，避開任何政治敏感議題。 3. 行動支付為主：北京多數店家、攤販不收現金，主要使用微信支付 / 支付寶，建議提前在台灣開通。 4. 中國防火牆限制：Googl
+4. 【攻略】北京旅游注意事项
+   链接: https://cn.toursforfun.com/default/nid-29538.html
+   简介: 国外游客建议在支付宝国际版绑定外卡，或使用“TourCard”这种专为游客定制的移动支付方案。 少数老式商铺仍需现金，可备少量人民币以防万一。 ## 七、购物与纪念品购买 7.1 推荐购物地 王府井：老字号百货店、工艺品、特产齐全。 前门大街：既能购物又能欣赏古建筑，适合买伴手礼。 秀水街/三里屯：品牌服饰、工艺品、特色饰品丰富。 潘家园旧货市场：喜欢古玩、
+5. 【必去北京旅遊景點】5天4夜北京自由行攻略︳小飛浪旅遊Blog
+   链接: https://littlewave-travel.com/%E5%8C%97%E4%BA%AC%E8%87%AA%E7%94%B1%E8%A1%8C%E6%94%BB%E7%95%A5blog
+   简介: 【早】前往頤和園 早上前往頤和園, 參觀特色宮殿及優美風景。由於頤和園很大, 如想遊船環湖賞景就要早點出發早點到達。 先由北宮門入場, 參觀蘇州街、須彌靈境、四大部洲、佛香閣、排雲殿、長廊、石舫、樂壽堂、德和園, 還有記得遠眺十七孔橋, 最後在東宮門離開。&gt;&gt; 頤和園門票 【午】圓明園 在頤和園東宮門外的餐廳吃個簡單午餐就乘網約車或Taxi到圓明園。曾經盛世</pre>
+  </section>
+</article>
+
+<article class="card solve" id="round-3">
+  <header class="round-head">
+    <span class="round-num fin">ROUND 3 / 3</span>
+    <span class="round-meta">执行计划步骤 · 输入 6 条消息 → 调用 DeepSeek → Finish → 对话终止</span>
+  </header>
+  <section class="section">
+    <h3 class="step">① 本轮模型输入 —— 发送给 DeepSeek 的完整 messages（Prompt）</h3>
+    <div class="msg system "><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-system">SYSTEM</span><span class="msg-title">SYSTEM · 执行 System Prompt（注入 Phase 1 计划 + Thought/Action/Finish 约束）（1/6）</span><span class="caret">点击展开 / 收起</span></div><pre>你是一个「旅行小助手」智能体。以下是针对本次用户问题制定的执行计划，请逐步执行该计划，通过多轮调用工具收集信息，直到计划中的信息收集完毕，再给出最终中文旅行建议。
+
+本次执行计划：
+计划：
+1. 调用 get_weather 查询北京的当前天气（温度/体感/湿度/风速/天气现象）
+2. 把天气摘要作为参数，调用 get_attraction 检索北京适合当天游玩的景点/攻略
+3. 综合天气与景点检索结果，用中文给出完整的旅行建议（Finish）
+
+
+可用工具清单：
+1. get_weather[城市名]
+   作用：查询该城市当前天气（温度/体感/湿度/风速/天气现象）。
+   示例：get_weather[北京]
+2. get_attraction[城市名, 天气摘要]
+   作用：根据城市和当天天气，检索该城市适合游玩的景点/攻略。
+   示例：get_attraction[北京, 晴 26°C 微风]
+
+
+执行阶段的回复格式（先 Thought 后 Action，Action 只能出现一行）：
+Thought: 用中文简短说明你在想什么、这一步计划要做什么、为什么调用该工具。
+Action: get_weather[北京]
+
+如果信息已经足够、可以给最终答复，就不再写 Action，直接输出：
+Thought: 北京今天有轻度霾、气温 26°C，检索结果里故宫和室内场馆都很合适……
+Finish[今天北京是霾天、26°C 较热，建议优先安排室内与博物馆类行程：上午参观故宫博物院（提前预约、以室内展馆为主），中午在王府井用午餐，下午去中国国家博物馆避暑避霾；户外如颐和园等可放到傍晚风起之后。穿衣以轻薄夏装为主，建议佩戴口罩、随身带水。]
+
+规则：
+- 必须按上面给出的执行计划逐步推进；计划里没有的信息不要自己脑补，先调用工具确认。
+- Action 中的工具名和参数必须与清单一致，参数写在半角方括号内；get_attraction 有两个参数，用英文逗号分隔。
+- 每次只调用一个工具，等待 Observation 返回后再决定下一轮动作。
+- Finish 不是工具：它用于给出最终答复，前面绝不能写 “Action:”，一行里也不能既有 Action 又有 Finish。
+- Finish 的方括号里必须写出真正完整可用的中文旅行回答（结合刚查到的实际天气和景点信息），不要写格式提示或占位文字。
+- 如果 Observation 以「工具错误」开头，说明刚才的调用失败了：不要慌，换一种表达（如英文城市名、更常见的说法）重试一次；若仍失败再如实告知用户。
+- 推荐先 get_weather 拿到天气，再 get_attraction 按天气推荐景点，最后综合成完整建议。
+- 全程使用中文回复用户。</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-user">USER</span><span class="msg-title">USER · 用户提问（2/6）</span><span class="caret">点击展开 / 收起</span></div><pre>我想去北京玩</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-assistant">ASSISTANT</span><span class="msg-title">ASSISTANT · 模型历史回复（3/6）</span><span class="caret">点击展开 / 收起</span></div><pre>Thought: 用户想去北京玩，我需要先查询北京的当前天气，以便后续推荐合适的景点。  
+Action: get_weather[北京]</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-obs">USER</span><span class="msg-title">USER · 工具结果回喂（Observation，主循环自动追加）（4/6）</span><span class="caret">点击展开 / 收起</span></div><pre>Observation: [Beijing当前天气] 霾(Smoky haze)；气温 26°C，体感 27°C；湿度 49%；ESE风 4km/h</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-assistant">ASSISTANT</span><span class="msg-title">ASSISTANT · 模型历史回复（5/6）</span><span class="caret">点击展开 / 收起</span></div><pre>Thought: 已获取北京当前天气为霾天、26°C、湿度适中、微风。接下来需要根据天气摘要调用 get_attraction 检索适合当天游玩的景点。  
+Action: get_attraction[北京, 霾 26°C 微风]</pre></div><div class="msg system open"><div class="msg-head" onclick="this.parentElement.classList.toggle('open')"><span class="badge b-obs">USER</span><span class="msg-title">USER · 工具结果回喂（Observation，主循环自动追加）（6/6）</span><span class="caret">点击展开 / 收起</span></div><pre>Observation: 以下是根据「北京 · 霾 26°C 微风」检索到的景点推荐：
+1. 北京旅遊攻略（2026）：熱門景點、美食、住宿、交通及行程推薦
+   链接: https://hk.trip.com/travel-guide/destination/beijing-1
+   简介: 聯絡我們 搜尋訂單 住宿 機票 高鐵／火車票 租車／機場接送 + 租車 + 機場接送 門票／體驗 + 門票／體驗 + eSIM 機票 + 住宿 禮品卡 郵輪 旅遊保險 獨立包團 旅行團 Trip.Planner 旅遊靈感 + 旅遊攻略 + Trip.Best 旅遊地圖 Trip.com 獎賞計劃 優惠 北京 故宮博物院 八達嶺長城 北京環球度假區 中國國家博
+2. 北京自由行攻略－行前準備、旅遊心得、推薦景點、行程安排
+   链接: https://andyventure.com/china-beijing-travel-guide
+   简介: 要注意防曬，大部分景點都沒有遮陰，很容易曬傷。防曬外套、帽子、太陽眼鏡都是必備。 ### 最佳旅遊時間 北京四季分明，其中春季（4～5月）與秋季（9～10月）是最佳旅遊時節。此時氣候宜人、天氣穩定、空氣相對清新，適合戶外活動與拍照。秋季更有楓葉轉紅的美景，推薦前往香山公園或頤和園欣賞秋意。夏季（6～8月）氣溫偏高，部分景點人潮擁擠；冬季（12～2月）則寒冷乾
+3. 2026北京自由行攻略｜北京景點、美食、住宿與行程推薦
+   链接: https://esim.holafly.com/zh/travel-tips/beijing-travel-guide
+   简介: ## 北京自由行注意事項 1. 台胞證必備：台灣人前往北京需持有效的台胞證。出發前確認證件有效期，並攜帶複印件以備不時之需。 2. 通關時避免敏感話題：入境時邊檢可能會詢問旅遊目的，簡單回答「旅遊」即可，避開任何政治敏感議題。 3. 行動支付為主：北京多數店家、攤販不收現金，主要使用微信支付 / 支付寶，建議提前在台灣開通。 4. 中國防火牆限制：Googl
+4. 【攻略】北京旅游注意事项
+   链接: https://cn.toursforfun.com/default/nid-29538.html
+   简介: 国外游客建议在支付宝国际版绑定外卡，或使用“TourCard”这种专为游客定制的移动支付方案。 少数老式商铺仍需现金，可备少量人民币以防万一。 ## 七、购物与纪念品购买 7.1 推荐购物地 王府井：老字号百货店、工艺品、特产齐全。 前门大街：既能购物又能欣赏古建筑，适合买伴手礼。 秀水街/三里屯：品牌服饰、工艺品、特色饰品丰富。 潘家园旧货市场：喜欢古玩、
+5. 【必去北京旅遊景點】5天4夜北京自由行攻略︳小飛浪旅遊Blog
+   链接: https://littlewave-travel.com/%E5%8C%97%E4%BA%AC%E8%87%AA%E7%94%B1%E8%A1%8C%E6%94%BB%E7%95%A5blog
+   简介: 【早】前往頤和園 早上前往頤和園, 參觀特色宮殿及優美風景。由於頤和園很大, 如想遊船環湖賞景就要早點出發早點到達。 先由北宮門入場, 參觀蘇州街、須彌靈境、四大部洲、佛香閣、排雲殿、長廊、石舫、樂壽堂、德和園, 還有記得遠眺十七孔橋, 最後在東宮門離開。&gt;&gt; 頤和園門票 【午】圓明園 在頤和園東宮門外的餐廳吃個簡單午餐就乘網約車或Taxi到圓明園。曾經盛世</pre></div>
+    <h3 class="step out">② 模型输出 —— Response 原文（可见其「思考过程」）</h3>
+    <pre>Thought: 已获取景点检索结果，包含故宫、颐和园、国家博物馆等推荐，但未明确针对霾天给出室内优先建议。结合天气（霾、26°C）和检索到的景点信息，我可以综合给出完整旅行建议。  
+Finish[北京今天有轻度霾、气温 26°C 较热，建议优先安排室内与博物馆类行程：上午参观故宫博物院（提前预约、以室内展馆为主），中午在王府井用午餐，下午去中国国家博物馆避暑避霾；户外如颐和园等可放到傍晚风起之后。穿衣以轻薄夏装为主，建议佩戴口罩、随身带水。]</pre>
+    <h3 class="step tool">③ 主循环解析结果</h3>
+    <p class="action-line"><span class="badge b-fin">FINISH</span>&nbsp; 模型判定计划信息已收集完毕，直接给出最终答复（不再调用工具）</p>
+    <h3 class="step obs">④ 无工具调用 —— 本轮结束对话（Finish）</h3><p style="color:var(--muted);font-size:12.5px">最终答复见页面底部。</p>
+  </section>
+</article>
+
+  
+<section class="final-card" id="final">
+  <h2>最终答复（Finish · 已收敛）</h2>
+  <pre>北京今天有轻度霾、气温 26°C 较热，建议优先安排室内与博物馆类行程：上午参观故宫博物院（提前预约、以室内展馆为主），中午在王府井用午餐，下午去中国国家博物馆避暑避霾；户外如颐和园等可放到傍晚风起之后。穿衣以轻薄夏装为主，建议佩戴口罩、随身带水。</pre>
+</section>
+
+  <footer>由 plan_solve_agent.py 生成 plan_solve_trace.json，再经 make_plan_solve_html.py 渲染为网页</footer>
+</div>
+</body>
+</html>
