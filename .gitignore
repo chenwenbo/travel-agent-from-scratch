@@ -16,3 +16,6 @@ venv/
 
 # 工具目录
 .codebuddy/
+
+# 本地预览截图（视觉校验用，不入库）
+.preview_*.png
